@@ -83,6 +83,6 @@ $$\text{Gini}_N(w) = \frac{\text{Gini}(w)}{1 - \frac{1}{|\Sigma|}}. $$
 
 Zdaj lahko definiramo funkcijo koristnosti, ki upošteva dolžino besede, takole:
 
-$$U(w) = \text{Gini}_N(w)^\gamma |w|^\alpha,
+$$U(w) = \text{Gini}_N(w)^\gamma |w|^\alpha,$$
 
 kjer sta $\alpha$ in $\gamma$ parametra, ki nam omogočajo uravnavati moč vpliva Ginijevega indeksa in dolžine besede na njeno koristnost. Nastavitev $\alpha = 0$ in $\gamma = 1$ nam omogoča iskanje besede z največjim Ginijevim indeksom. Večje vrednosti $\alpha$ povečajo vpliv dolžine besede, večje vrednosti $\gamma$ določajo kako izrazit je vpliv Ginijevega indeksa. Lahko preizkusimo različne nastavitve, jaz sem se igral z $\alpha = 0.5$ in $\gamma = 10$.
