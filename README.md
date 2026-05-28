@@ -62,4 +62,19 @@ probs = [r.prob() for r in rules]
 selected = random.choices(rules, weights=probs, k=1)[0]
 ```
 
+## Posplošitev funkcije koristnosti
+
+Ugotavljam, da je Ginijev indeks preveč enostavna funkcija koristnosti, ker doseže maksimum za zelo kratko besedo (ki jo hitro lahko zadane tudi vzorčenje Monte Carlo). Zato predlagam, da zamenjamo funkcijo koristnosti tako, da bo njena maksimalna vrednost odvisna tudi od dolžine besede.
+
+Definirajmo najprej Ginijev indeks za podano besedo $w$
+$$\text{Gini}(w) = 1 - \sum_{a \in \Sigma} \left( \frac{|w|_a}{|w|} \right)^2, $$
+kjer je $|w|_a$ število znakov $a$ v besedi $w$, $|w|$ pa njena dolžina. Ker je maksimalna vrednost Ginijevega indeksa enaka
+$$1 - \frac{1}{|\Sigma|},$$
+lahko Ginijev indeks normaliziramo tako, da ima vrednost na intervalu $[0,1]$:
+$$\text{Gini}_N(w) = \frac{\text{Gini}(w)}{1 - \frac{1}{|\Sigma|}}. $$
+
+Zdaj lahko definiramo funkcijo koristnosti, ki upošteva dolžino besede, takole:
+$$U(w) = \text{Gini}_N(w)^\gamma |w|^\alpha,
+kjer sta $\alpha$ in $\gamma$ parametra, ki nam omogočajo uravnavati moč vpliva Ginijevega indeksa in dolžine besede na njeno koristnost. Nastavitev $\alpha = 0$ in $\gamma = 1$ nam omogoča iskanje besede z največjim Ginijevim indeksom. Večje vrednosti $\alpha$ povečajo vpliv dolžine besede, večje vrednosti $\gamma$ določajo kako izrazit je vpliv Ginijevega indeksa. Lahko preizkusimo različne nastavitve, jaz sem se igral z $\alpha = 0.5$ in $\gamma = 10$.
+
 5. Nisem čisto prepričan, a se mi zdi, da na začetku `search` manjka `self.rollout_results = []`. Ker namreč, ob večkratnih zaporednih klicih bi najbrž morali ta seznam sprazniti?
