@@ -11,7 +11,7 @@ from SRToolkit.utils.symbol_library import SymbolLibrary
 from SRToolkit.evaluation import SR_evaluator
 from SRToolkit.dataset import Feynman
 from SRToolkit.approaches import ProGED
-from grams import Grams, reward_function_bic, build_default_grammar, reward_function_rmse
+from grams import Grams, reward_function_bic, build_grammar, reward_function_rmse
 
 REWARD_FUNCTIONS = {
     "BIC": reward_function_bic,
@@ -20,12 +20,12 @@ REWARD_FUNCTIONS = {
 
 
 def run_one(name, seed, method_name, reward_name=None, max_evaluations=10000, k_rollouts=3,
-            max_depth=20):
+            max_depth=50):
     benchmark = Feynman()
     dataset = benchmark.create_dataset(name, seed=seed)
     n_vars = dataset.X.shape[1]
     error_threshold = dataset.success_threshold 
-    grammar_str = build_default_grammar(n_vars)   
+    grammar_str = build_grammar(n_vars)   
 
     X_search, y_search = dataset.X, dataset.y
 
@@ -79,8 +79,8 @@ def run_one(name, seed, method_name, reward_name=None, max_evaluations=10000, k_
             "evaluation_calls": evaluation_calls}
 
 
-RESULTS_PKL = "poskus2.pkl"
-RESULTS_CSV = "poskus2.csv"
+RESULTS_PKL = "nova_verzija_percentilna.pkl"
+RESULTS_CSV = "nova_verzija_percentilna.csv"
 LIST_COLS = ["expr_tokens", "expr_params", "ground_truth"]
 SAVE_EVERY = 10
 

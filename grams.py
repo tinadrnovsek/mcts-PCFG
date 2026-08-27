@@ -36,6 +36,11 @@ class Grams:
             raise ValueError(f"Invalid value_function: {value_function}. Must be 'percentile', 'minmax', or 'none'.")
         self.value_function = value_function
 
+        self.reward_min = float('inf')
+        self.q_min = float('inf')
+        self.q_max = float('-inf')
+        self.q_observations = []  
+
         if evaluator is not None:
             self.n_points = evaluator.X.shape[0]
     
@@ -97,9 +102,10 @@ class Grams:
 
         self.history = []
         self.rule_history = []
-        self.reward_observations = []
-        self.reward_min = float('inf') 
-        self.reward_max = float('-inf')
+        self.reward_min = float('inf')
+        self.q_min = float('inf')
+        self.q_max = float('-inf')
+        self.q_observations = []   
         if self.evaluator is not None:
             self.min_rmse = float('inf')
             self.best_model = None
@@ -129,11 +135,13 @@ class Grams:
                 if self.evaluator is not None and self.evaluator.should_stop:
                     break
 
-                self.backpropagate(node, self._failure_value())
+                self.backpropagate(node, self.failure_value())
                 continue
 
             avg_reward = sum(rewards) / len(rewards)
-            self.backpropagate(node, self.normalize_reward(avg_reward))
+            self.reward_min = min(self.reward_min, avg_reward)
+
+            self.backpropagate(node, avg_reward)
 
             if self.evaluator is not None and self.min_rmse <= self.error:
                 print(f"Stopping early at iteration {i} with RMSE {self.min_rmse}")
@@ -149,43 +157,50 @@ class Grams:
 
         return self.history
 
-    def _failure_value(self):
+    def failure_value(self):
         """ Return a failure value for backpropagation when no valid reward is obtained."""
+        # return self.reward_min if np.isfinite(self.reward_min) else 0.0
         if self.value_function == "none":
                     return self.reward_min if np.isfinite(self.reward_min) else 0.0
         return 0.0
-    
-    def normalize_reward(self, avg_reward):
-        """ Normalize the reward on [0,1] scale."""
-        self.reward_observations.append(avg_reward)
-        self.reward_min = min(self.reward_min, avg_reward)
-        self.reward_max = max(self.reward_max, avg_reward)
 
-        if self.value_function == "none":
-            return avg_reward
-        
-        if self.value_function == "minmax":
-            if self.reward_max > self.reward_min:
-                return (avg_reward - self.reward_min) / (self.reward_max - self.reward_min)
-            return 0.5
-        
-        if self.value_function == "percentile":
-            u05, u95 = np.percentile(self.reward_observations, [5, 95])
-            if u95 > u05:
-                return float(np.clip((avg_reward - u05) / (u95 - u05), 0.0, 1.0))
-            return 0.5
+    def score(self, parent, child):
+        """ Compute the score for a child node based on UCT or PUCT formula.
 
-    def _score(self, parent, child):
-        """ Compute the score for a child node based on UCT or PUCT formula."""
+        Q(s,a) se normalizira dinamično, z uporabo trenutnih statistik Q-vrednosti,
+        opaženih kjerkoli v drevesu do tega trenutka:
+        - "minmax":     min-max normalizacija (MuZero, Schrittwieser idr. 2020),
+        - "percentile": normalizacija med 5. in 95. percentilom (Hafner idr. 2025),
+        - "none":       brez normalizacije.
+        """
+        if child.visits == 0:
+            q = 0.0
+        else:
+            q = child.value / child.visits
+            if self.value_function == "minmax":
+                if self.q_max > self.q_min:
+                    q = (q - self.q_min) / (self.q_max - self.q_min)
+                else:
+                    q = 0.5
+            elif self.value_function == "percentile":
+                if len(self.q_observations) >= 2:
+                    q05, q95 = np.percentile(self.q_observations, [5, 95])
+                    if q95 > q05:
+                        q = float(np.clip((q - q05) / (q95 - q05), 0.0, 1.0))
+                    else:
+                        q = 0.5
+                else:
+                    q = 0.5
+
         if self.use_puct:
             parent_visits = max(1, parent.visits)
-            q = 0.0 if child.visits == 0 else child.value / child.visits
             return q + self.c_param * child.prior * np.sqrt(parent_visits) / (1 + child.visits)
-        
-        log_parent = np.log(parent.visits) if parent.visits > 0 else 0.0
+
         if child.visits == 0:
             return float("inf")
-        return child.value / child.visits + self.c_param * np.sqrt(log_parent / child.visits)
+        log_parent = np.log(parent.visits) if parent.visits > 0 else 0.0
+        return q + self.c_param * np.sqrt(log_parent / child.visits)
+
 
     def tree_policy(self, node):
         """ Select a node to expand."""
@@ -210,7 +225,7 @@ class Grams:
             node.exhausted = True
             return None
 
-        best = max(candidates, key=lambda c: self._score(node, c))
+        best = max(candidates, key=lambda c: self.score(node, c))
         result = self.tree_policy(best)
         if result is None: # already explored all children
             return self.tree_policy(node)   
@@ -322,11 +337,17 @@ class Grams:
         self.rule_history.append(applied_rules)
         return current_reward
 
-    def backpropagate(self, node, reward):
-        """ Backpropagate the reward up the tree."""
+    def backpropagate(self, node, value):
+        """ Backpropagate the reward value up the tree."""
         while node is not None:
             node.visits += 1
-            node.value += reward
+            node.value += value
+            if self.value_function in ("minmax", "percentile"):
+                q = node.value / node.visits
+                self.q_min = min(self.q_min, q)
+                self.q_max = max(self.q_max, q)
+                if self.value_function == "percentile":
+                    self.q_observations.append(q)
             node = node.parent
 
 def reward_function_bic(rmse, k,n,log_prob):
@@ -338,7 +359,7 @@ def reward_function_rmse(rmse,**kwargs):
     rmse = max(rmse, 1e-12)
     return -rmse
 
-def build_default_grammar(n_variables):
+def build_grammar(n_variables):
     variables = [f"X_{i}" for i in range(n_variables)]
     grammar = "E -> E '+' F [0.2] | E '-' F [0.2] | F [0.6]\n"
     grammar += "F -> F '*' T [0.2] | F '/' T [0.2] | T [0.6]\n"
@@ -346,4 +367,3 @@ def build_default_grammar(n_variables):
     grammar += "R -> '(' E ')' [0.6] | 'sqrt' '(' E ')' [0.1] |'cos' '(' E ')' [0.1] | 'exp' '(' E ')' [0.1]| 'sin' '(' E ')' [0.1]\n"
     grammar += "\n".join([f"V -> '{v}' [{1/len(variables)}]" for v in variables])
     return grammar
-
